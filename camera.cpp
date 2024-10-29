@@ -28,11 +28,30 @@ const char* password = "password";
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
 
-const char* websocket_server_host = "192.168.1.1";
+String websocket_server_host;
 const uint16_t websocket_server_port1 = 8000;
 
 using namespace websockets;
 WebsocketsClient client;
+
+bool find_ip(int start, int end) {
+    for (int i = start; i <= end; i++) {
+        String ip = "192.168.55." + String(i);
+        Serial.print("Sprawdzam: ");
+        Serial.println(ip);
+
+        if (client.connect(ip.c_str(), websocket_server_port1, "/check-ip")) {
+            Serial.println("Połączenie nawiązane z: " + ip); 
+            websocket_server_host = ip; 
+             client.close(); 
+            return true; 
+        } else {
+            Serial.println("Brak odpowiedzi od: " + ip); 
+        }
+        delay(10); 
+    }
+    return false; 
+}
 
 void onEventsCallback(WebsocketsEvent event, String data) {
     switch (event) {
@@ -53,14 +72,13 @@ void onEventsCallback(WebsocketsEvent event, String data) {
 }
 
 void onMessageCallback(WebsocketsMessage message) {
-    // Handle incoming WebSocket messages if necessary
+   
 }
 
 void setup() {
     Serial.begin(115200);
     Serial.setDebugOutput(false);
 
-    // Konfigurowanie kamery/pinów
     camera_config_t config;
     config.ledc_channel = LEDC_CHANNEL_0;
     config.ledc_timer = LEDC_TIMER_0;
@@ -83,7 +101,7 @@ void setup() {
     config.xclk_freq_hz = 20000000; // Set XCLK frequency
     config.pixel_format = PIXFORMAT_JPEG; // Set pixel format to JPEG
 
-    // Ustawienie jakości zdjęć JPEG
+  
     if (psramFound()) {
         config.frame_size = FRAMESIZE_UXGA;
         config.jpeg_quality = 10; // JPEG quality set to 10
@@ -94,14 +112,14 @@ void setup() {
         config.fb_count = 1; // Buffer count
     }
 
-    // Rozpoczęcie pracy kamery
+  
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK) {
         Serial.printf("Wystąpił błąd 0x%x\n", err);
         return; // Return on error
     }
 
-    // Połączenie WiFi
+
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
@@ -109,6 +127,19 @@ void setup() {
     }
     Serial.println("");
     Serial.println("WiFi połączone");
+
+
+
+     if (!find_ip(100, 254)) {
+        // If not found, search from 0 to 99
+        if (!find_ip(0, 99)) {
+            // If still not found, search from 200 to 255
+            find_ip(200, 255);
+        }
+    }
+
+    
+  
     Serial.print("Streaming Kamery jest gotowy!");
 
     // Rozpoczęcie WebSocket
@@ -124,37 +155,37 @@ void loop() {
     camera_fb_t* fb = esp_camera_fb_get();
     if (!fb) {
         Serial.println("Uchwycenie obrazu się nie powiodło");
-        return; // Return on failure to get frame
+        return; 
     }
 
     size_t _jpg_buf_len = 0;
     uint8_t* _jpg_buf = NULL;
 
-    // Handle JPEG compression
+
     if (fb->format != PIXFORMAT_JPEG) {
         bool jpeg_converted = frame2jpg(fb, 80, &_jpg_buf, &_jpg_buf_len);
-        esp_camera_fb_return(fb); // Always return fb
+        esp_camera_fb_return(fb); 
         if (!jpeg_converted) {
             Serial.println("JPEG compression failed");
-            return; // Return on failure to compress
+            return; 
         }
     } else {
         _jpg_buf_len = fb->len;
-        _jpg_buf = fb->buf; // Use the buffer directly
+        _jpg_buf = fb->buf; 
     }
 
-    // Send the image over WebSocket
+    
     if (_jpg_buf) {
         client.sendBinary((const char*)_jpg_buf, _jpg_buf_len);
         Serial.print("Wysylam, buf_len: ");
 Serial.println(_jpg_buf_len);
-        // Only free _jpg_buf if it was allocated by frame2jpg
+      
         if (fb->format != PIXFORMAT_JPEG) {
-            free(_jpg_buf); // Free only if allocated dynamically
+            free(_jpg_buf); 
         }
     }
 
-    esp_camera_fb_return(fb); // Return the frame buffer to the camera
-    delay(1); // Adjust delay as necessary
+    esp_camera_fb_return(fb); 
+    delay(1); 
 }
 
